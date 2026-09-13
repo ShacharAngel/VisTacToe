@@ -1,0 +1,14 @@
+{
+  "name": "@vistactoe/vision",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@techstark/opencv-js": "^5.0.0-release.1",
+    "@vistactoe/shared": "*",
+    "sharp": "^0.35.4"
+  }
+}

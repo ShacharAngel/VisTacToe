@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.sqlite
+*.log
+.env
+.DS_Store
+.idea/
+*.pdf
+data/
+debug-frames/

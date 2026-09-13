@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VisTacToe</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <section class="camera">
+        <h1>VisTacToe</h1>
+        <video id="video" autoplay playsinline muted></video>
+        <div id="status" class="status">connecting…</div>
+      </section>
+      <section class="panel">
+        <div id="board" class="board"></div>
+        <div id="ask" class="ask hidden">
+          <p id="ask-question"></p>
+          <div id="ask-options"></div>
+        </div>
+        <button id="new-game">New game</button>
+        <ol id="log" class="log" reversed></ol>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

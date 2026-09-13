@@ -1,0 +1,32 @@
+{
+  "name": "vistactoe",
+  "version": "0.1.0",
+  "description": "AI vision tic-tac-toe — a real-time video agent that plays against a human on a paper board. Vistral home assignment.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "e2e"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,web npm:dev:server npm:dev:web",
+    "dev:server": "npm run dev --workspace @vistactoe/server",
+    "dev:web": "npm run dev --workspace @vistactoe/web",
+    "build:web": "npm run build --workspace @vistactoe/web",
+    "start": "npm run build:web && npm run start --workspace @vistactoe/server",
+    "feedback:report": "tsx packages/server/scripts/feedback-report.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "concurrently": "^10.0.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
