@@ -1,7 +1,7 @@
 import type { Observation } from '@vistactoe/shared';
 import type { Analyzer } from './acquire.js';
 import { classifyCells } from './classify.js';
-import type { GrayImage, GridGeometry } from './types.js';
+import type { GrayImage, GridGeometry, Quad } from './types.js';
 
 export interface WatcherConfig {
   /** Consecutive still frames before the board is read. */
@@ -21,6 +21,8 @@ export interface WatcherConfig {
   changedInkPixels: number;
   /** Spatial tolerance in pixels when comparing ink masks (absorbs quad jitter). */
   inkTolerancePx: number;
+  /** Consecutive identical classifications required before a board is reported. */
+  agreeFrames: number;
 }
 
 export const defaultWatcherConfig: WatcherConfig = {
@@ -32,6 +34,9 @@ export const defaultWatcherConfig: WatcherConfig = {
   // speckle and quad jitter stay in the low hundreds.
   changedInkPixels: 250,
   inkTolerancePx: 5,
+  // A single classification pass can misread (a shadow settles into an "X");
+  // two independent sensor frames must agree before a board is believed.
+  agreeFrames: 2,
 };
 
 /** Gray-level delta above which a pixel counts as changed between raw frames. */
@@ -53,8 +58,12 @@ export class BoardWatcher {
   /** A candidate new lost kind and how long it has persisted, for debouncing state changes. */
   private lostCandidate: { kind: 'no_paper' | 'no_grid'; count: number } | null = null;
   private lastReportedInk: GrayImage | null = null;
+  /** Classification awaiting corroboration: label string + how many consecutive frames agreed. */
+  private boardCandidate: { key: string; count: number } | null = null;
   /** Freshest rectified view + geometry, for escalation crops (VLM / debugging). */
   lastBoard: { rectified: GrayImage; grid: GridGeometry } | null = null;
+  /** Freshest frame-space geometry for client overlays; null while no paper is in view. */
+  lastGeometry: { quad: Quad; grid: GridGeometry | null } | null = null;
 
   constructor(
     private readonly analyzer: Analyzer,
@@ -66,14 +75,26 @@ export class BoardWatcher {
   /** Returns an observation worth telling the session about, or null. */
   processFrame(frame: GrayImage): Observation | null {
     const analysis = this.analyzer.analyzeFrame(frame);
+    // Honest per-frame data: nulls out during occlusion, no smoothing — the
+    // overlay client applies its own grace period.
+    this.lastGeometry =
+      analysis.kind === 'no_paper'
+        ? null
+        : { quad: analysis.quad, grid: analysis.kind === 'grid' ? analysis.grid : null };
 
     if (analysis.kind !== 'grid') {
       this.stillCount = 0;
+      this.boardCandidate = null;
       this.prevFrame = frame;
       this.lostCount++;
       // A hand crossing the paper edge breaks the quad for a few frames —
       // that is motion, not a lost page.
       if (this.lostCount < this.config.pageLostFrames) return { kind: 'unstable' };
+
+      // A sustained loss invalidates the ink memory: when the page returns —
+      // even the very same paper — the board must re-report so the session
+      // can relock instead of waiting forever for an ink change.
+      this.lastReportedInk = null;
 
       const kind = analysis.kind;
       if (this.lastLostKind === null) {
@@ -104,17 +125,32 @@ export class BoardWatcher {
     this.prevFrame = frame;
     if (moving) {
       this.stillCount = 0;
+      this.boardCandidate = null;
       return { kind: 'unstable' };
     }
 
     this.stillCount++;
-    if (this.stillCount < this.config.stillFrames) return null;
+    // Classification starts agreeFrames-1 frames before the stillness bar, so
+    // the corroborated report lands on the same frame a single read used to.
+    if (this.stillCount + this.config.agreeFrames - 1 < this.config.stillFrames) return null;
 
     const ink = this.analyzer.inkMask(analysis.rectified);
-    if (this.lastReportedInk && !this.inkChanged(ink, this.lastReportedInk)) return null;
+    if (this.lastReportedInk && !this.inkChanged(ink, this.lastReportedInk)) {
+      this.boardCandidate = null;
+      return null;
+    }
 
+    // One pass can misread (noise, a shadow, a hand's last blur): require
+    // agreeFrames consecutive identical label sets before believing the board.
+    const cells = classifyCells(ink, analysis.grid);
+    const key = cells.map((c) => c.label).join(',');
+    this.boardCandidate =
+      this.boardCandidate?.key === key ? { key, count: this.boardCandidate.count + 1 } : { key, count: 1 };
+    if (this.boardCandidate.count < this.config.agreeFrames || this.stillCount < this.config.stillFrames) return null;
+
+    this.boardCandidate = null;
     this.lastReportedInk = ink;
-    return { kind: 'board', cells: classifyCells(ink, analysis.grid), observedAt: Date.now() };
+    return { kind: 'board', cells, observedAt: Date.now() };
   }
 
   /** Symmetric ink comparison with spatial tolerance, so quad jitter of a few pixels stays silent. */

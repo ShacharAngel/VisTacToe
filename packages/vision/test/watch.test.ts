@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Observation } from '@vistactoe/shared';
-import { BoardWatcher, createAnalyzer, synthetic, type Analyzer, type GrayImage } from '@vistactoe/vision';
+import { BoardWatcher, createAnalyzer, synthetic, type Analyzer, type GrayImage, type Quad } from '@vistactoe/vision';
 
 const { renderPaper, renderScene, defaultQuad, occlude } = synthetic;
 
@@ -21,6 +21,12 @@ function watcher(overrides?: ConstructorParameters<typeof BoardWatcher>[1]): Boa
 
 function feed(w: BoardWatcher, frames: GrayImage[]): (Observation | null)[] {
   return frames.map((f) => w.processFrame(f));
+}
+
+function expectQuadClose(actual: Quad, expected: Quad, tolerance = 8): void {
+  for (let i = 0; i < 4; i++) {
+    expect(Math.hypot(actual[i]!.x - expected[i]!.x, actual[i]!.y - expected[i]!.y)).toBeLessThan(tolerance);
+  }
 }
 
 function labels(obs: Observation | null): string {
@@ -67,6 +73,24 @@ describe('BoardWatcher', () => {
     }
   });
 
+  it('never reports a board whose classification flickers frame to frame', () => {
+    const w = watcher();
+    // A mark appearing/vanishing on alternating frames is too small to trip the
+    // motion gate, but the two classifications disagree — corroboration must
+    // hold the report until consecutive frames read identically.
+    const flicker = feed(
+      w,
+      Array.from({ length: 10 }, (_, i) => frame(i % 2 ? 'X........' : '.........', 400 + i)),
+    );
+    expect(flicker.filter((r) => r?.kind === 'board')).toHaveLength(0);
+
+    // The scene settles on the X — now exactly one report, with the X.
+    const settled = feed(w, [420, 421, 422].map((s) => frame('X........', s)));
+    const boards = settled.filter((r) => r?.kind === 'board');
+    expect(boards).toHaveLength(1);
+    expect(labels(boards[0]!)).toBe('X........');
+  });
+
   it('treats a brief paper loss as instability, not a lost page', () => {
     const w = watcher();
     feed(w, [1, 2, 3, 4].map((s) => frame('.........', s)));
@@ -83,6 +107,20 @@ describe('BoardWatcher', () => {
     const lost = results.filter((r) => r?.kind === 'no_paper');
     expect(lost).toHaveLength(1);
     expect(results.filter((r) => r?.kind === 'no_grid')).toHaveLength(0);
+  });
+
+  it('re-reports the same board after a sustained page loss, so the session can relock', () => {
+    const w = watcher({ pageLostFrames: 4 });
+    const settled = feed(w, [1, 2, 3, 4, 5].map((s) => frame('X........', s)));
+    expect(settled.filter((r) => r?.kind === 'board')).toHaveLength(1);
+
+    // Page removed long enough to announce the loss, then the SAME paper returns:
+    // identical ink must still re-report, or the session waits forever.
+    feed(w, Array.from({ length: 6 }, (_, i) => renderScene({ seed: 70 + i })));
+    const back = feed(w, [80, 81, 82, 83, 84].map((s) => frame('X........', s)));
+    const boards = back.filter((r) => r?.kind === 'board');
+    expect(boards).toHaveLength(1);
+    expect(labels(boards[0]!)).toBe('X........');
   });
 
   it('reports no_grid for a sustained blank page', () => {
@@ -106,6 +144,18 @@ describe('BoardWatcher', () => {
     // The debounce means at most the single initial announcement gets through.
     const prompts = results.filter((r) => r?.kind === 'no_paper' || r?.kind === 'no_grid');
     expect(prompts.length).toBeLessThanOrEqual(1);
+  });
+
+  it('exposes frame-space geometry while the board is in view, and drops it when the paper leaves', () => {
+    const w = watcher();
+    feed(w, [1, 2, 3, 4].map((s) => frame('.........', s)));
+    expect(w.lastGeometry).not.toBeNull();
+    expect(w.lastGeometry!.grid).not.toBeNull();
+    expectQuadClose(w.lastGeometry!.quad, defaultQuad());
+
+    // A single paperless frame is enough — lastGeometry is honest per-frame data.
+    w.processFrame(renderScene({ seed: 60 }));
+    expect(w.lastGeometry).toBeNull();
   });
 
   it('announces a settled state change (paper put down, still no grid) once', () => {

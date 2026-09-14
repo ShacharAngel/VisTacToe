@@ -30,14 +30,105 @@ const EMPTY_INK_FRACTION = 0.01;
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
+/** Flagged ink below this share of the crop area is stripped unconditionally — too thin to be a mark. */
+const THIN_BLEED_FRACTION = 0.05;
+/** Above that, flagged ink is stripped only when it hugs the crop border like a line remnant; a mark merged into a line crosses the center instead. */
+const BLEED_BORDER_FRACTION = 0.6;
+
 export function classifyCells(ink: GrayImage, grid: GridGeometry): CellClassification[] {
+  const spanning = spanningInkMask(ink, grid);
   const cells: CellClassification[] = [];
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 3; col++) {
-      cells.push(classifyCell(cropCell(ink, grid, row, col)));
+      cells.push(classifyCell(cropCellStripped(ink, spanning, grid, row, col)));
     }
   }
   return cells;
+}
+
+/**
+ * Flag ink belonging to connected components that span well beyond one cell —
+ * grid-line strokes, not marks. A wavy line's tail can curve past the crop
+ * inset into a cell's interior and masquerade as a diagonal stroke (a phantom
+ * X); a mark, by contrast, lives inside its one cell.
+ */
+function spanningInkMask(ink: GrayImage, grid: GridGeometry): Uint8Array {
+  const { data, width, height } = ink;
+  const spanW = ((grid.xs[3]! - grid.xs[0]!) / 3) * 1.6;
+  const spanH = ((grid.ys[3]! - grid.ys[0]!) / 3) * 1.6;
+  const flagged = new Uint8Array(width * height);
+  const seen = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  for (let start = 0; start < data.length; start++) {
+    if (!data[start] || seen[start]) continue;
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = start;
+    seen[start] = 1;
+    let x0 = width;
+    let x1 = 0;
+    let y0 = height;
+    let y1 = 0;
+    const members: number[] = [];
+    while (head < tail) {
+      const idx = queue[head++]!;
+      members.push(idx);
+      const x = idx % width;
+      const y = (idx / width) | 0;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+      const tryVisit = (n: number): void => {
+        if (data[n] && !seen[n]) {
+          seen[n] = 1;
+          queue[tail++] = n;
+        }
+      };
+      if (x > 0) tryVisit(idx - 1);
+      if (x < width - 1) tryVisit(idx + 1);
+      if (y > 0) tryVisit(idx - width);
+      if (y < height - 1) tryVisit(idx + width);
+    }
+    if (x1 - x0 > spanW || y1 - y0 > spanH) {
+      for (const idx of members) flagged[idx] = 1;
+    }
+  }
+  return flagged;
+}
+
+/**
+ * Cell crop with thin grid-line bleed erased. Stripping is conditional: when
+ * the flagged ink is a large share of the crop it is probably a mark drawn
+ * touching a grid line (their components merge) — leave it for the normal
+ * classifier + escalation path rather than silently erasing a real mark.
+ */
+function cropCellStripped(ink: GrayImage, flagged: Uint8Array, grid: GridGeometry, row: number, col: number): GrayImage {
+  const crop = cropCell(ink, grid, row, col);
+  const x0 = grid.xs[col]!;
+  const y0 = grid.ys[row]!;
+  const left = Math.max(0, Math.round(x0 + (grid.xs[col + 1]! - x0) * CELL_INSET));
+  const top = Math.max(0, Math.round(y0 + (grid.ys[row + 1]! - y0) * CELL_INSET));
+  const borderBand = Math.max(2, Math.round(Math.min(crop.width, crop.height) * 0.12));
+  let bleed = 0;
+  let bleedBorder = 0;
+  for (let y = 0; y < crop.height; y++) {
+    for (let x = 0; x < crop.width; x++) {
+      if (!crop.data[y * crop.width + x] || !flagged[(top + y) * ink.width + (left + x)]) continue;
+      bleed++;
+      if (x < borderBand || y < borderBand || x >= crop.width - borderBand || y >= crop.height - borderBand) bleedBorder++;
+    }
+  }
+  if (bleed === 0) return crop;
+  const thin = bleed < crop.width * crop.height * THIN_BLEED_FRACTION;
+  const borderHugging = bleedBorder / bleed > BLEED_BORDER_FRACTION;
+  if (!thin && !borderHugging) return crop;
+  for (let y = 0; y < crop.height; y++) {
+    for (let x = 0; x < crop.width; x++) {
+      if (flagged[(top + y) * ink.width + (left + x)]) crop.data[y * crop.width + x] = 0;
+    }
+  }
+  return crop;
 }
 
 export function cropCell(ink: GrayImage, grid: GridGeometry, row: number, col: number, inset = CELL_INSET): GrayImage {

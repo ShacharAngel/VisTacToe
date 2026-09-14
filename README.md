@@ -14,12 +14,12 @@ npm run dev        # starts the server (:3000) and the web client (:5173)
 ```
 
 1. Open **http://localhost:5173** and allow camera access.
-2. Point the camera down at a blank sheet of paper — the agent will ask you (on screen and out loud) to **draw a 3×3 grid**. Draw it big, covering most of the page.
+2. Point the camera down at a blank sheet of paper — a dashed blue rectangle on the video shows where the page should go. The agent will ask you (on screen and out loud) to **draw a 3×3 grid**. Draw it big, covering most of the page.
 3. The game starts automatically: **you are X and you move first.** Draw an X in any cell, then take your hand out of frame.
-4. The agent announces its move — e.g. *"I play B2 — please draw an O there."* (columns are A–C left to right, rows 1–3 top to bottom). Draw its O where it asked.
+4. The agent announces its move — e.g. *"I play B2 — please draw an O there."* (columns are A–C left to right, rows 1–3 top to bottom) — and highlights that cell right on the camera view. Draw its O where it asked.
 5. Repeat until it announces the result. Show it a fresh grid for a rematch.
 
-If it isn't sure about a mark it will ask you ("I'm not sure about A3 — what is drawn there?") — answer with the on-screen buttons. Good light and a thick dark pen keep those questions rare.
+If it isn't sure about a mark it will ask you ("I'm not sure about A3 — what is drawn there?") — answer with the on-screen buttons. Good light and a thick dark pen keep those questions rare. Sitting opposite the camera? Tick **Rotate view 180°** to flip the display to your side — detection is unaffected. **Clear log on new game** (on by default) keeps the event log to the current game.
 
 ## How it works (one move)
 
@@ -89,7 +89,7 @@ Precedence: built-in defaults ← config file ← environment. The tunable knobs
 ## Tests
 
 ```bash
-npm test           # 100 tests: engine, session FSM, CV, tiers, feedback, full e2e
+npm test           # 112 tests: engine, session FSM, CV, tiers, feedback, full e2e
 npm run typecheck
 ```
 
@@ -112,3 +112,4 @@ docs               decisions + game-agnostic architecture design
 - **"Show me the paper" forever** — more light, less glare; the page should be the brightest thing in frame and fully visible.
 - **Grid not found** — draw it bigger (most of the page) with 2 clear vertical + 2 horizontal strokes; a bordered grid works too.
 - **Marks misread** — use a thicker pen; close your O's, cross your X's; or enable the VLM tier and let it absorb the ambiguity.
+- **No voice** — browsers mute speech until you interact with the page: click anywhere once and the last announcement replays. If the log shows `🔇 speech stuck …`, the browser's own speech engine has wedged (page reloads don't reset it) — fully restart the browser.

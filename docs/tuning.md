@@ -52,6 +52,7 @@ These are deliberately *not* config: they are coupled to the CV pipeline's geome
 | `pageChangeFrames` | `12` | Debounce before switching between "show me the paper" and "draw a grid" prompts |
 | `changedInkPixels` | `250` | Ink-mask pixel delta required to re-report a board (a real pen mark is >1000; jitter is low hundreds) |
 | `inkTolerancePx` | `5` | Spatial tolerance in the ink diff, so a few pixels of quad jitter stay silent |
+| `agreeFrames` | `2` | Consecutive identical classifications required before a board is reported — a one-frame misread (shadow, hand blur) can never commit. Starts classifying early, so the happy path reports on the same frame as a single read |
 | `PIXEL_DELTA` | `28` | Gray-level delta at which a pixel counts as changed in the motion gate |
 
 ### Paper & grid detection — `packages/vision/src/acquire.ts`
@@ -73,8 +74,17 @@ These are deliberately *not* config: they are coupled to the CV pipeline's geome
 | `CELL_INSET` | `0.15` | Fraction trimmed per side so grid-line ink stays out of the crop |
 | `EMPTY_INK_FRACTION` | `0.01` | Below this, the cell is empty |
 | Border-bleed rule | `>0.85` border ink & `<0.05` total | Residual grid-line ink reads as empty (confidence 0.7) |
+| Spanning-ink strip | span `>1.6` cells; strip if `<0.05` of crop or `>0.6` border-hugging | Ink connected to a board-spanning component (a wavy grid line's tail curving into a cell) is erased before classification — unless it crosses the crop's center like a mark merged into a line, which is left for escalation. Guards against phantom marks (see `real-grid-hash-empty.png` fixture) |
 | Shape score weights | `0.45 / 0.30 / 0.25` | O: enclosed hole / ring consistency / hollow center; X: diagonal hugging / center ink / no hole |
 | Confidence | `0.5 + margin·0.9`, cap `0.99` | Margin between the two shape scores; faint marks (<0.025 ink) scaled ×0.8 |
+
+### Web client — `packages/web/src/main.ts`
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `GEOMETRY_TTL_MS` | `1500` | How long the on-video move marker survives without fresh geometry (bridges hand occlusions; hides when the paper leaves) |
+| Placement guide | 65% of frame, centered | Dashed rectangle shown while no paper is detected — comfortably above the 12% minimum paper area |
+| localStorage keys | `vistactoe.clearLogOnNewGame`, `vistactoe.rotateView` | Persisted UI toggles (clear-log defaults on, rotate defaults off) |
 
 ### VLM tier — `packages/server/src/vlm.ts`, `pipeline.ts`
 
@@ -110,10 +120,11 @@ Boosts only ever *raise* confidence toward a label the classifier already chose,
 |---|---|
 | Board rules, win/draw, reachability check (`isConsistent`) | `packages/engine/src/board.ts` |
 | Perfect-play negamax + memo | `packages/engine/src/minimax.ts` |
-| WebSocket protocol (3 client + 3 server message types) | `packages/shared/src/protocol.ts` |
+| WebSocket protocol (3 client + 4 server message types) | `packages/shared/src/protocol.ts` |
 | Session phases, effects, snapshot types | `packages/shared/src/session.ts` |
 | Config schema + defaults | `packages/shared/src/config.ts` |
 | Paper detection, rectification, grid detection, ink mask | `packages/vision/src/acquire.ts` |
+| Homography math, cell → frame-pixel projection for overlays | `packages/vision/src/homography.ts` |
 | Motion / stability / ink-change gates (T0) | `packages/vision/src/watch.ts` |
 | X/O/empty classifier + confidence (T1) | `packages/vision/src/classify.ts` |
 | Synthetic scene renderer (all test fixtures) | `packages/vision/src/synthetic.ts` |
@@ -126,7 +137,7 @@ Boosts only ever *raise* confidence toward a label the classifier already chose,
 | Event log, summaries, learning extraction | `packages/server/src/feedback/store.ts` |
 | Handwriting profiles + threshold self-tuning | `packages/server/src/feedback/calibration.ts` |
 | Trend report CLI (`npm run feedback:report`) | `packages/server/src/feedback/report.ts` |
-| Camera capture, board UI, ask buttons, speech | `packages/web/src/main.ts` |
+| Camera capture, board UI, video overlay (paper guide + move marker), view/log controls, ask buttons, speech | `packages/web/src/main.ts` |
 | Full-loop e2e with a synthetic camera | `e2e/test/game.e2e.test.ts` |
 
 ## Raising the read-success rate, in order of cost

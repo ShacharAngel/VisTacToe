@@ -1,4 +1,4 @@
-import type { Point, Quad } from './types.js';
+import { RECT_SIZE, type GridGeometry, type Point, type Quad } from './types.js';
 
 /** Row-major 3×3 projective transform. */
 export type Homography = [number, number, number, number, number, number, number, number, number];
@@ -55,6 +55,29 @@ export function unitSquareToQuad(quad: Quad): Homography {
     { x: 0, y: 1 },
   ];
   return homographyFromPoints(unit, quad);
+}
+
+/**
+ * Project rectified cell boundaries back into source-frame pixels: 9 row-major
+ * cell quads (TL,TR,BR,BL), index matching the engine's cell 0–8. Grid
+ * coordinates / RECT_SIZE are unit-square coordinates, so mapping through the
+ * unit-square→quad homography inverts the rectification warp.
+ */
+export function projectCellQuads(quad: Quad, grid: GridGeometry): Quad[] {
+  const h = unitSquareToQuad(quad);
+  const at = (x: number, y: number): Point => applyHomography(h, { x: x / RECT_SIZE, y: y / RECT_SIZE });
+  const cells: Quad[] = [];
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      cells.push([
+        at(grid.xs[col]!, grid.ys[row]!),
+        at(grid.xs[col + 1]!, grid.ys[row]!),
+        at(grid.xs[col + 1]!, grid.ys[row + 1]!),
+        at(grid.xs[col]!, grid.ys[row + 1]!),
+      ]);
+    }
+  }
+  return cells;
 }
 
 /** Homography mapping the quad onto the unit square. */

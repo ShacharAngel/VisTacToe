@@ -50,12 +50,31 @@ describe('SessionPipeline', () => {
     expect(announced!.board[0]).toBe('X');
   }, 30_000);
 
-  it('emits nothing for unchanged frames once settled', async () => {
+  it('emits only geometry for unchanged frames once settled', async () => {
     const pipeline = new SessionPipeline(analyzer, mergeConfig({ stability: { ...defaultConfig.stability, stillFrames: 3 } }));
     for (let seed = 1; seed <= 6; seed++) {
       await pipeline.handleFrame(await jpegFrame('.........', seed));
     }
     const quiet = await pipeline.handleFrame(await jpegFrame('.........', 50));
-    expect(quiet).toHaveLength(0);
+    expect(quiet).toHaveLength(1);
+    expect(quiet[0]!.type).toBe('geometry');
+  }, 30_000);
+
+  it('streams overlay geometry: cell quads while the grid is visible, nulls when the paper leaves', async () => {
+    const pipeline = new SessionPipeline(analyzer, mergeConfig({ stability: { ...defaultConfig.stability, stillFrames: 3 } }));
+    const messages = await pipeline.handleFrame(await jpegFrame('.........', 1));
+    const geometry = messages.find((m) => m.type === 'geometry');
+    expect(geometry?.type).toBe('geometry');
+    if (geometry?.type !== 'geometry') throw new Error('unreachable');
+    expect(geometry.geometry.paperQuad).not.toBeNull();
+    expect(geometry.geometry.cellQuads).toHaveLength(9);
+
+    // Paper removed: the same frame's geometry already reports the loss.
+    const scene = renderScene({ seed: 90 });
+    const gone = await pipeline.handleFrame((await encodeGrayToJpeg(scene)).toString('base64'));
+    const lost = gone.find((m) => m.type === 'geometry');
+    if (lost?.type !== 'geometry') throw new Error('expected a geometry message');
+    expect(lost.geometry.paperQuad).toBeNull();
+    expect(lost.geometry.cellQuads).toBeNull();
   }, 30_000);
 });

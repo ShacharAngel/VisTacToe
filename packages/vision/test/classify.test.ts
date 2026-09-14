@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyCell, makeGray, synthetic, type GrayImage } from '@vistactoe/vision';
+import { classifyCell, classifyCells, makeGray, synthetic, type GrayImage, type GridGeometry } from '@vistactoe/vision';
 
 const { rng } = synthetic;
 
@@ -113,5 +113,46 @@ describe('classifyCell', () => {
     stroke(img, 30, 50, 70, 55, 5, 1, random);
     const result = classifyCell(img);
     expect(result.confidence).toBeLessThan(0.75);
+  });
+});
+
+describe('classifyCells (board-level, grid-line bleed)', () => {
+  const GRID: GridGeometry = { xs: [60, 220, 380, 540], ys: [60, 220, 380, 540] };
+
+  /** Hash-style grid whose top line's tail curves up into the top-right cell — the real-world phantom-X shape. */
+  function boardWithWavyTail(random: () => number): GrayImage {
+    const img = makeGray(600, 600);
+    stroke(img, 60, 220, 450, 220, 8, 2, random);
+    stroke(img, 450, 218, 530, 150, 8, 1, random); // the tail rising into cell 2's interior
+    stroke(img, 60, 380, 540, 380, 8, 2, random);
+    stroke(img, 220, 60, 220, 540, 8, 2, random);
+    stroke(img, 380, 60, 380, 540, 8, 2, random);
+    return img;
+  }
+
+  it('strips a wavy line tail instead of reading it as a phantom X', () => {
+    const cells = classifyCells(boardWithWavyTail(rng(3)), GRID);
+    expect(cells.map((c) => c.label)).toEqual(Array.from({ length: 9 }, () => 'empty'));
+  });
+
+  it('still reads a clean X in the center cell with the tail stripped around it', () => {
+    const random = rng(4);
+    const img = boardWithWavyTail(random);
+    stroke(img, 250, 250, 350, 350, 6, 2, random);
+    stroke(img, 350, 250, 250, 350, 6, 2, random);
+    const cells = classifyCells(img, GRID);
+    expect(cells[4]!.label).toBe('X');
+    expect(cells.filter((_, i) => i !== 4).map((c) => c.label)).toEqual(Array.from({ length: 8 }, () => 'empty'));
+  });
+
+  it('does not silently erase a mark drawn touching a grid line', () => {
+    const random = rng(5);
+    const img = boardWithWavyTail(random);
+    // One stroke of the X crosses the top boundary line — the components merge,
+    // so the whole mark gets flagged; stripping must back off (too much ink).
+    stroke(img, 250, 210, 350, 350, 6, 2, random);
+    stroke(img, 350, 250, 250, 350, 6, 2, random);
+    const cells = classifyCells(img, GRID);
+    expect(cells[4]!.label).not.toBe('empty');
   });
 });

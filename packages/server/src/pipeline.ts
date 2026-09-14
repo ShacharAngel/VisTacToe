@@ -1,9 +1,10 @@
-import type { AppConfig, CellLabel, Effect, ServerMessage } from '@vistactoe/shared';
+import type { AppConfig, CellLabel, Effect, Quad, ServerMessage } from '@vistactoe/shared';
 import {
   BoardWatcher,
   cropCell,
   decodeToGray,
   encodeGrayToJpeg,
+  projectCellQuads,
   VisionDebugDumper,
   type Analyzer,
 } from '@vistactoe/vision';
@@ -55,7 +56,8 @@ export class SessionPipeline {
       const frame = await decodeToGray(Buffer.from(jpegBase64, 'base64'));
       if (this.debug) await this.debug.maybeDump(frame);
       let observation = this.watcher.processFrame(frame);
-      if (!observation) return [];
+      const geometry = this.geometryMessage(frame.width, frame.height);
+      if (!observation) return [geometry];
       if (observation.kind === 'board') {
         // Raw readings (with features) go to the feedback log; the session
         // sees calibration-boosted confidences.
@@ -67,11 +69,27 @@ export class SessionPipeline {
       const before = this.session.snapshot().phase;
       const effects = this.session.onObservation(observation);
       // Suppress no-op snapshots (unstable frames) to keep the socket quiet.
-      if (effects.length === 0 && this.session.snapshot().phase === before) return [];
-      return await this.toMessages(effects);
+      if (effects.length === 0 && this.session.snapshot().phase === before) return [geometry];
+      // Geometry first, so the client has fresh quads before rendering the snapshot.
+      return [geometry, ...(await this.toMessages(effects))];
     } finally {
       this.busy = false;
     }
+  }
+
+  /** Frame-space overlay geometry from the freshest processed frame (~1 KB at 5 fps). */
+  private geometryMessage(width: number, height: number): ServerMessage {
+    const geo = this.watcher.lastGeometry;
+    const round = (q: Quad): Quad => q.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })) as Quad;
+    return {
+      type: 'geometry',
+      geometry: {
+        width,
+        height,
+        paperQuad: geo ? round(geo.quad) : null,
+        cellQuads: geo?.grid ? projectCellQuads(geo.quad, geo.grid).map(round) : null,
+      },
+    };
   }
 
   async handleAnswer(askId: string, label: CellLabel): Promise<ServerMessage[]> {

@@ -5,13 +5,10 @@ export interface GrayImage {
   height: number;
 }
 
-export interface Point {
-  x: number;
-  y: number;
-}
-
-/** Paper corners ordered TL, TR, BR, BL in source-frame coordinates. */
-export type Quad = [Point, Point, Point, Point];
+// Point/Quad live in shared so the protocol can carry frame geometry to the
+// client; re-exported here to keep vision-internal imports unchanged.
+import type { Point, Quad } from '@vistactoe/shared';
+export type { Point, Quad };
 
 /**
  * Cell boundaries in rectified-board coordinates: xs/ys hold the four

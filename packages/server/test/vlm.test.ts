@@ -107,8 +107,9 @@ describe('pipeline escalation through the VLM tier', () => {
     // …the VLM was consulted and its answer committed the move.
     expect(events.some((e) => e.type === 'vlm_call')).toBe(true);
     expect(events.some((e) => e.type === 'answer' && (e as { source?: string }).source === 'vlm')).toBe(true);
-    const last = messages.at(-1);
-    expect(last?.type).toBe('snapshot');
+    // Quiet trailing frames still emit geometry, so look at the last snapshot.
+    const last = [...messages].reverse().find((m) => m.type === 'snapshot');
+    expect(last).toBeDefined();
     if (last?.type === 'snapshot') expect(last.snapshot.board[0]).toBe('X');
   }, 30_000);
 

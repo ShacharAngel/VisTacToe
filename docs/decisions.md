@@ -44,7 +44,7 @@ Cost/latency targets, measured in tests: cheap path well inside a 200ms frame bu
 
 ## Known limits & open ends (deliberate, time-boxed — each with its fix)
 
-- CV fixtures are almost entirely synthetic (perspective, pen wobble, sensor noise, occlusion — all seeded), plus one checked-in real webcam photo (`packages/vision/test/fixtures/real-grid-empty.png`) that regression-guards paper detection and rectification. With more time: a recorded real-video fixture replayed in CI.
+- CV fixtures are almost entirely synthetic (perspective, pen wobble, sensor noise, occlusion — all seeded), plus two checked-in real webcam photos: `real-grid-empty.png` regression-guards paper detection and rectification, and `real-grid-hash-empty.png` — captured from a live failure — guards classification against grid-line bleed (a wavy line's tail once read as a phantom X). With more time: a recorded real-video fixture replayed in CI.
 - One session per WebSocket connection; multi-tenant concerns are design-only (Section 3).
 - Latency is measured coarsely (event timestamps), not per-stage histograms.
 - The wrong-*symbol*-in-announced-cell case forfeits the game rather than negotiating repair — defensible, but a "cross it into an X and I'll take the next cell" repair flow would be kinder.

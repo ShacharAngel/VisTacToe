@@ -10,8 +10,12 @@
     <main>
       <section class="camera">
         <h1>VisTacToe</h1>
-        <video id="video" autoplay playsinline muted></video>
+        <div class="camera-frame">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="overlay" width="640" height="480"></canvas>
+        </div>
         <div id="status" class="status">connecting…</div>
+        <label class="option"><input type="checkbox" id="rotate-view" /> Rotate view 180°</label>
       </section>
       <section class="panel">
         <div id="board" class="board"></div>
@@ -20,6 +24,7 @@
           <div id="ask-options"></div>
         </div>
         <button id="new-game">New game</button>
+        <label class="option"><input type="checkbox" id="clear-log" /> Clear log on new game</label>
         <ol id="log" class="log" reversed></ol>
       </section>
     </main>
