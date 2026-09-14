@@ -4,7 +4,7 @@ A real-time video agent that plays tic-tac-toe against you on **paper**. Point a
 
 Built for the Vistral VP R&D take-home. Design rationale: [`docs/decisions.md`](docs/decisions.md) · game-agnostic architecture (Section 3): [`docs/architecture.md`](docs/architecture.md).
 
-## Running a game (under ten minutes)
+## Running a game - all you need to know to play, fast.
 
 You need: **Node ≥ 22**, a **webcam** (or phone via Continuity Camera), **paper and a dark pen**.
 
